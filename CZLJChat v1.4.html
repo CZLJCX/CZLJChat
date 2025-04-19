@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CZLJChat v1.4</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0 auto;
+            padding: 5px;
+            padding-left: 200px;
+            padding-right: 200px;
+            background-color: #f0f0f0;
+        }
+
+        #chat-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        #chat-messages {
+            position: relative;
+            min-height: 330px;
+            max-height: 330px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            margin-left: 20px;
+            margin-right: 20px;
+        }
+
+        #chat-messages::before {
+            content: "我是CZLJChat，很高兴见到你！";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #000;
+            opacity: 0.4;
+            font-weight: bold;
+            z-index: 1;
+            white-space: nowrap;
+        }
+
+        #chat-messages:has(.message)::before {
+            display: none;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: auto;
+            margin-right: 0;
+            max-width: 80%;
+            width: fit-content;
+        }
+
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: auto;
+            margin-left: 0;
+            max-width: 80%;
+            width: fit-content;
+        }
+
+        .code-block {
+            background-color: #282c34;
+            color: #abb2bf;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Consolas, monospace;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            margin: 10px 0;
+        }
+
+        #input-container {
+            position: relative;
+        }
+
+        #user-input {
+            width: 98%;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            resize: vertical;
+            min-height: 70px;
+            max-height: 150px;
+            overflow-y: auto;
+            background-color: #f7f7f7;
+        }
+
+        .button-container {
+            position: absolute;
+            right: 15px;
+            bottom: 10px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .send-button {
+            width: 32px;
+            height: 32px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .send-button:hover {
+            background-color: #0056b3;
+        }
+
+        .send-button::after {
+            content: "➜";
+            font-size: 16px;
+        }
+
+        .file-upload-label {
+            width: 32px;
+            height: 32px;
+            background-color: #fefefe;
+            color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .file-upload-label:hover {
+            background-color: #eeeeee;
+        }
+
+        .file-upload-label::after {
+            content: "✚";
+            font-size: 16px;
+            color: #666666;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .send-button.loading::after {
+            content: "";
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+                background-color: #fff;
+            }
+
+            #chat-container {
+                padding: 12px;
+                border-radius: 8px;
+                box-shadow: none;
+            }
+
+            #chat-messages {
+                min-height: 60vh;
+                max-height: 60vh;
+                margin-bottom: 15px;
+                padding: 8px;
+            }
+
+            #chat-messages::before {
+                font-size: 18px;
+            }
+
+            .message {
+                font-size: 14px;
+                max-width: 85%;
+                margin-bottom: 10px;
+                padding: 8px;
+            }
+
+            #user-input {
+                min-height: 36px;
+                max-height: 100px;
+                font-size: 14px;
+                padding: 8px;
+            }
+
+            .send-button, .file-upload-label {
+                width: 28px;
+                height: 28px;
+            }
+
+            .send-button::after, .file-upload-label::after {
+                font-size: 14px;
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <h1>CZLJChat</h1>
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <div id="input-container">
+            <textarea id="user-input" placeholder="给CZLJChat发送消息"></textarea>
+            <div class="button-container">
+                <label for="file-input" class="file-upload-label"></label>
+                <button class="send-button" onclick="sendMessage()"></button>
+            </div>
+            <input type="file" id="file-input" accept=".txt,.pdf,.docx,.xls,.xlsx,.json">
+        </div>
+    </div>
+    <script>
+        const APPID = "";
+        const API_KEY = "";
+        const API_SECRET = "";
+        const HOST = "spark-api.xf-yun.com";
+        const PATH = "/v4.0/chat";
+
+        let ws = null;
+        let answerContent = '';
+        let fileContent = '';
+
+        function getWebSocketUrl() {
+            const date = new Date().toUTCString();
+            const signature_origin = `host: ${HOST}\ndate: ${date}\nGET ${PATH} HTTP/1.1`;
+            const signature_sha = CryptoJS.HmacSHA256(signature_origin, API_SECRET);
+            const signature = CryptoJS.enc.Base64.stringify(signature_sha);
+            const authorization_origin = `api_key="${API_KEY}", algorithm="hmac-sha256", headers="host date request-line", signature="${signature}"`;
+            const authorization = btoa(authorization_origin);
+            return `wss://${HOST}${PATH}?authorization=${authorization}&date=${encodeURIComponent(date)}&host=${encodeURIComponent(HOST)}`;
+        }
+
+        function sendMessage() {
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.querySelector('.send-button');
+            const question = userInput.value.trim();
+
+            if (!question && !fileContent) {
+                alert("请输入问题或上传文件！");
+                return;
+            }
+
+            userInput.disabled = true;
+            sendButton.classList.add('loading');
+
+            if (fileContent) addMessage(`已上传文件内容：${fileContent.substring(0, 100)}...`, 'user');
+            addMessage(question, 'user');
+            userInput.value = '';
+
+            ws = new WebSocket(getWebSocketUrl());
+            answerContent = '';
+
+            ws.onopen = () => {
+                const requestData = {
+                    header: { app_id: APPID, uid: "12345" },
+                    parameter: { chat: { domain: "4.0Ultra", temperature: 0.5, max_tokens: 3000 } },
+                    payload: {
+                        message: {
+                            text: [
+                                { 
+                                    role: "user", 
+                                    content: fileContent ? 
+                                        `${question}\n附件内容：${fileContent}` : 
+                                        question
+                                }
+                            ]
+                        }
+                    }
+                };
+                ws.send(JSON.stringify(requestData));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.header.code !== 0) {
+                    addMessage(`错误：${data.header.message}`, 'bot');
+                    ws.close();
+                    return;
+                }
+
+                answerContent += data.payload.choices.text[0].content;
+                updateLastMessage(answerContent);
+
+                if (data.header.status === 2) ws.close();
+            };
+
+            ws.onclose = () => {
+                userInput.disabled = false;
+                sendButton.classList.remove('loading');
+                fileContent = '';
+            };
+
+            ws.onerror = (error) => {
+                addMessage('连接发生错误', 'bot');
+                console.error('WebSocket Error:', error);
+                userInput.disabled = false;
+                sendButton.classList.remove('loading');
+                fileContent = '';
+            };
+        }
+
+        function addMessage(content, role) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+
+            if (content.includes("```")) {
+                const parts = content.split("```");
+                parts.forEach((part, index) => {
+                    if (index % 2 === 1) {
+                        const codeBlock = document.createElement('pre');
+                        codeBlock.className = 'code-block';
+                        codeBlock.textContent = part;
+                        messageDiv.appendChild(codeBlock);
+                    } else {
+                        messageDiv.appendChild(document.createTextNode(part));
+                    }
+                });
+            } else {
+                messageDiv.textContent = content;
+            }
+
+            messagesDiv.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function updateLastMessage(content) {
+            const messages = document.getElementById('chat-messages').children;
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage?.classList.contains('bot-message')) {
+                lastMessage.textContent = content;
+            } else {
+                addMessage(content, 'bot');
+            }
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const messagesDiv = document.getElementById('chat-messages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const ext = file.name.split('.').pop().toLowerCase();
+                switch (ext) {
+                    case 'pdf':
+                        fileContent = await parsePDF(file);
+                        break;
+                    case 'docx':
+                        fileContent = await parseDOCX(file);
+                        break;
+                    case 'xls':
+                    case 'xlsx':
+                        fileContent = await parseExcel(file);
+                        break;
+                    default:
+                        fileContent = await readTextFile(file);
+                }
+                addMessage(`已上传文件：${file.name}`, 'user');
+            } catch (err) {
+                console.error('文件解析失败:', err);
+                alert(`文件解析失败：${err.message}`);
+            }
+        });
+
+        async function parsePDF(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+            const pdf = await loadingTask.promise;
+            let text = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                text += content.items.map(item => item.str).join(' ');
+            }
+            return text;
+        }
+
+        async function parseDOCX(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await mammoth.extractRawText({ arrayBuffer });
+            return result.value;
+        }
+
+        async function parseExcel(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            let text = '';
+            workbook.SheetNames.forEach(sheetName => {
+                const sheet = workbook.Sheets[sheetName];
+                text += XLSX.utils.sheet_to_csv(sheet) + '\n';
+            });
+            return text;
+        }
+
+        async function readTextFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        document.getElementById('user-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
