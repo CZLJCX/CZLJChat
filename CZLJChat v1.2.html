@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>CZLJChat v1.2</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        #chat-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        #chat-messages {
+            position: relative;
+            min-height: 370px;
+            max-height: 370px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        #chat-messages::before {
+            content: "我是CZLJChat，很高兴见到你！";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #000;
+            opacity: 0.6;
+            font-weight: bold;
+            z-index: 1;
+            white-space: nowrap;
+        }
+
+        #chat-messages:has(.message)::before {
+            display: none;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: auto;
+            margin-right: 0;
+            max-width: 80%;
+            width: fit-content;
+        }
+
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: auto;
+            margin-left: 0;
+            max-width: 80%;
+            width: fit-content;
+        }
+
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        #user-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button.loading {
+            color: transparent;
+            pointer-events: none;
+        }
+
+        button.loading::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-indicator {
+            display: none;
+            justify-content: center;
+            gap: 8px;
+            margin: 10px 0;
+            position: sticky;
+            bottom: 0;
+            background-color: white;
+            padding: 10px 0;
+        }
+
+        .loading-indicator .dot {
+            width: 10px;
+            height: 10px;
+            background-color: #007bff;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+
+        .loading-indicator .dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .loading-indicator .dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes bounce {
+            0%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .loading-indicator.active {
+            display: flex;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+<h1>CZLJChat</h1>
+    <div id="chat-container">
+        <div id="chat-messages">
+            <div id="loading-indicator" class="loading-indicator">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+        <div id="input-container">
+            <input type="text" id="user-input" placeholder="输入你的问题...">
+            <button onclick="sendMessage()">发送</button>
+        </div>
+    </div>
+    <script>
+        const APPID = "";
+        const API_KEY = "";
+        const API_SECRET = "";
+        const HOST = "spark-api.xf-yun.com";
+        const PATH = "/v4.0/chat";
+
+        let ws = null;
+        let answerContent = '';
+
+        function getWebSocketUrl() {
+            const date = new Date().toUTCString();
+            const signature_origin = `host: ${HOST}\ndate: ${date}\nGET ${PATH} HTTP/1.1`;
+            const signature_sha = CryptoJS.HmacSHA256(signature_origin, API_SECRET);
+            const signature = CryptoJS.enc.Base64.stringify(signature_sha);
+            
+            const authorization_origin = `api_key="${API_KEY}", algorithm="hmac-sha256", headers="host date request-line", signature="${signature}"`;
+            const authorization = btoa(authorization_origin);
+            
+            return `wss://${HOST}${PATH}?authorization=${authorization}&date=${encodeURIComponent(date)}&host=${encodeURIComponent(HOST)}`;
+        }
+
+        function sendMessage() {
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.querySelector('button');
+            const question = userInput.value.trim();
+            if (!question) return;
+
+            userInput.disabled = true;
+            sendButton.classList.add('loading');
+
+            addMessage(question, 'user');
+            userInput.value = '';
+
+            ws = new WebSocket(getWebSocketUrl());
+            answerContent = '';
+
+            ws.onopen = () => {
+                const requestData = {
+                    header: {
+                        app_id: APPID,
+                        uid: "12345"
+                    },
+                    parameter: {
+                        chat: {
+                            domain: "4.0Ultra",
+                            temperature: 0.5,
+                            max_tokens: 500
+                        }
+                    },
+                    payload: {
+                        message: {
+                            text: [
+                                { role: "user", content: question }
+                            ]
+                        }
+                    }
+                };
+                ws.send(JSON.stringify(requestData));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.header.code !== 0) {
+                    addMessage(`错误：${data.header.message}`, 'bot');
+                    ws.close();
+                    return;
+                }
+
+                answerContent += data.payload.choices.text[0].content;
+                updateLastMessage(answerContent);
+
+                if (data.header.status === 2) {
+                    ws.close();
+                }
+            };
+
+            ws.onclose = () => {
+                userInput.disabled = false;
+                sendButton.classList.remove('loading');
+            };
+
+            ws.onerror = (error) => {
+                addMessage('连接发生错误', 'bot');
+                console.error('WebSocket Error:', error);
+                userInput.disabled = false;
+                sendButton.classList.remove('loading');
+            };
+        }
+
+        function addMessage(content, role) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            messageDiv.textContent = content;
+            messagesDiv.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        function updateLastMessage(content) {
+            const messages = document.getElementById('chat-messages').children;
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage && lastMessage.classList.contains('bot-message')) {
+                lastMessage.textContent = content;
+            } else {
+                addMessage(content, 'bot');
+            }
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            const messagesDiv = document.getElementById('chat-messages');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        document.getElementById('user-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
